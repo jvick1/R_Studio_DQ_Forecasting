@@ -1,4 +1,4 @@
-# Forecasting Serious Delinquency Rate
+# Forecasting Serious Delinquency Rate in R Markdown
 ## Executive Summary
 The serious delinquency rate, defined as loans 90 days or more past due including those in foreclosure, poses significant risks to banks' financial stability. Without accurate forecasting, banks may face increased risk exposure and revenue losses. This report explores various models to forecast the serious delinquency rate, with Median Quantile Regression emerging as the most accurate model, achieving an 87.07% accuracy rate when forecasting four quarters ahead.
 
