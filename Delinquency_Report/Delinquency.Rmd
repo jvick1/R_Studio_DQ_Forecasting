@@ -1,0 +1,178 @@
+---
+title: "ForecastSDR"
+author: "Jake Vick"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("D:/R Work Area/DQ") 
+library(corrplot)
+library(tree)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(knitr)
+library(e1071)
+library(MASS)
+library(class)
+library(quantreg)
+library(nnet)
+library(NeuralNetTools)
+library(caret)
+library(kableExtra)
+library(reshape2)
+library(lubridate)
+```
+
+# EDA
+
+```{r, echo=TRUE, fig.height=8, fig.width=12}
+#reading in US Data
+USA_Data <- read.csv("DelinquencyData.csv")
+USA_Forecast <- read.csv("US_Forecast.csv")
+n <- length(USA_Data[,1])
+
+#selecting only dates
+Dates <- as.Date(USA_Data[c(5:n),1], format = "%m/%d/%Y")
+Forecast_Dates <- as.Date(USA_Forecast[c(6:17),1])
+
+#selecting only numerical data
+USA_Data <- data.frame(sapply(USA_Data[c(5:n),c(2:4,6:8,10)], function(x) as.numeric(as.character(x))))
+
+USA_Forecast <- data.frame(sapply(USA_Forecast[c(6:17),c(2:5)], function(x) as.numeric(as.character(x))))
+
+#EDA
+Loans <- USA_Data[,c(1:3)]
+Loans <- cbind(Dates,Loans)
+colnames(Loans) <- c("Dates", "FHA", "VA", "Convential")
+meltdf <- melt(Loans,id="Dates")
+ggplot(meltdf,aes(x=Dates,y=value, colour=variable, group = variable))+geom_line(size=2)+labs(colour = "Loan Types") +  ggtitle("Serious Delinquncy Rate by Loan Type in the USA")+
+  theme(plot.title = element_text(size = 24)) + ylab("% of loans serviced")+   scale_color_manual(values=c("blue", "red", "green"))
+
+#Correlation for USA
+USA_cor <- cor(USA_Data)
+
+#define Headers
+Headers <- c("FHA loans", "VA loans", "Conventional loans", "Unemployment Rate", "Total Personal Income", "Gross Domestic Product ", "Single-Family Home")
+
+#apply headers
+row.names(USA_cor) <- Headers
+colnames(USA_cor) <- Headers
+
+#corrplot
+corrplot(USA_cor)
+```
+
+# Forecasting Linear Model
+
+```{r, echo=TRUE, fig.height=8, fig.width=12}
+# LINEAR MODELS
+LM_FHA <- lm(XMBASDRF.IUSA ~ LBR.IUSA + GDPQ.IUSA + XHOFHOPIQ.IUSA, data = USA_Data)
+summary(LM_FHA)
+
+LM_VA <- lm(XMBASDRV.IUSA ~ LBR.IUSA + XHOFHOPIQ.IUSA, data = USA_Data)
+summary(LM_VA)
+
+LM_Con <- lm(XMBASDRC.IUSA ~ LBR.IUSA + YPQ.IUSA + GDPQ.IUSA + XHOFHOPIQ.IUSA, data = USA_Data)
+summary(LM_Con)
+
+colnames(USA_Forecast) <- c("LBR.IUSA", "YPQ.IUSA", "GDPQ.IUSA", "XHOFHOPIQ.IUSA")
+
+# FORECAST 
+pred_FHA <- predict(LM_FHA, USA_Forecast)
+pred_VA <- predict(LM_VA, USA_Forecast)
+pred_Con <- predict(LM_Con, USA_Forecast)
+
+# FORECAST PLOT
+Dates_Full <- c(Dates,Forecast_Dates)
+
+d1 <- data.frame(Date = Dates, M = USA_Data[,1], Observation = "Historical_FHA")
+d2 <- data.frame(Date = Forecast_Dates, M = pred_FHA, Observation = "Forecast_FHA")
+d3 <- data.frame(Date = Dates, M = USA_Data[,2], Observation = "Historical_VA")
+d4 <- data.frame(Date = Forecast_Dates, M = pred_VA, Observation = "Forecast_VA")
+d5 <- data.frame(Date = Dates, M = USA_Data[,3], Observation = "Historical_Con")
+d6 <- data.frame(Date = Forecast_Dates, M = pred_Con, Observation = "Forecast_Con")
+
+LinearModel <- rbind(d1,d2,d3,d4,d5,d6)
+
+ggplot(data=LinearModel,aes(x=Date,y=M, color = Observation))+
+  geom_line(aes(color = Observation), size = 2) +
+  scale_color_manual(values=c("blue", "light blue", "red", "pink", "green", "light green")) +
+  ggtitle("Serious Delinquncy Rate Forecast by Loan Type in the USA")+
+  theme(plot.title = element_text(size = 24)) +
+  ylab("% of loans serviced")
+
+
+# FORECAST TABLE
+
+USA_Forecast2 <- cbind(pred_FHA, pred_VA, pred_Con, USA_Forecast)
+colnames(USA_Forecast2) <- c("XMBASDRF.IUSA","XMBASDRV.IUSA","XMBASDRC.IUSA","LBR.IUSA", "YPQ.IUSA", "GDPQ.IUSA", "XHOFHOPIQ.IUSA")
+
+USA_ALL <- rbind(USA_Data,USA_Forecast2)
+rownames(USA_ALL) <- Dates_Full
+
+
+highlight <- USA_ALL[c(53:64),]
+colnames(highlight) <- c("FHA Loans", "VA Loans","Conventional Loans","Unemployment Rate", "Total Personal Income (Mil. USD)","GDP (Mil. USD)","House Price Index")
+
+kable(highlight) %>%
+  kable_styling(bootstrap_options = c("striped", "hover",
+                                      "condensed", "responsive"),
+                font_size = 12) %>%
+  row_spec(9:12, bold=T)
+
+```
+
+# Quantile Regression
+
+```{r, echo=TRUE, fig.height=8, fig.width=12}
+
+# qPred <- predict(q,USA.test)
+# qPred
+
+q_FHA <- rq(XMBASDRF.IUSA ~ LBR.IUSA + GDPQ.IUSA + XHOFHOPIQ.IUSA, data = USA_Data, tau = 0.5)
+q_FHA$coefficients
+q_VA <- rq(XMBASDRV.IUSA ~ LBR.IUSA + XHOFHOPIQ.IUSA, data = USA_Data, tau = 0.5)
+q_VA$coefficients
+q_Con <- rq(XMBASDRC.IUSA ~ LBR.IUSA + YPQ.IUSA + GDPQ.IUSA + XHOFHOPIQ.IUSA, data = USA_Data, tau = 0.5)
+q_Con$coefficients
+
+qPred_FHA <- predict(q_FHA,USA_Forecast)
+qPred_VA <- predict(q_VA,USA_Forecast)
+qPred_Con <- predict(q_Con,USA_Forecast)
+
+q1 <- data.frame(Date = Dates, M = USA_Data[,1], Observation = "Historical_FHA")
+q2 <- data.frame(Date = Forecast_Dates, M = qPred_FHA, Observation = "Forecast_FHA")
+q3 <- data.frame(Date = Dates, M = USA_Data[,2], Observation = "Historical_VA")
+q4 <- data.frame(Date = Forecast_Dates, M = qPred_VA, Observation = "Forecast_VA")
+q5 <- data.frame(Date = Dates, M = USA_Data[,3], Observation = "Historical_Con")
+q6 <- data.frame(Date = Forecast_Dates, M = qPred_Con, Observation = "Forecast_Con")
+
+QuantModel <- rbind(q1,q2,q3,q4,q5,q6)
+
+ggplot(data=QuantModel,aes(x=Date,y=M, color = Observation))+
+  geom_line(aes(color = Observation), size = 2) +
+  scale_color_manual(values=c("blue", "light blue", "red", "pink", "green", "light green")) +
+  ggtitle("Serious Delinquncy Rate Forecast by Loan Type in the USA")+
+  theme(plot.title = element_text(size = 24)) +
+  ylab("% of loans serviced")
+
+# FORECAST TABLE
+
+USA_Forecast3 <- cbind(qPred_FHA, qPred_VA, qPred_Con, USA_Forecast)
+colnames(USA_Forecast3) <- c("XMBASDRF.IUSA","XMBASDRV.IUSA","XMBASDRC.IUSA","LBR.IUSA", "YPQ.IUSA", "GDPQ.IUSA", "XHOFHOPIQ.IUSA")
+
+USA_ALL <- rbind(USA_Data,USA_Forecast3)
+rownames(USA_ALL) <- Dates_Full
+
+
+highlight <- USA_ALL[c(53:64),]
+colnames(highlight) <- c("FHA Loans", "VA Loans","Conventional Loans","Unemployment Rate", "Total Personal Income (Mil. USD)","GDP (Mil. USD)","House Price Index")
+
+kable(highlight) %>%
+  kable_styling(bootstrap_options = c("striped", "hover",
+                                      "condensed", "responsive"),
+                font_size = 12) %>%
+  row_spec(9:12, bold=T)
+```
