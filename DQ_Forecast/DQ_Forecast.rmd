@@ -6,7 +6,7 @@ output: html_document
   
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("D:/R Work Area/DQ")
+setwd("D:/R Work Area/DQ") #UPDATE THIS PATH
 library(corrplot)
 library(tree)
 library(ggplot2)
